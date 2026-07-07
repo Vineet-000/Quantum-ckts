@@ -1,0 +1,8 @@
+4x4 Unitary represents a 2-qubit system. Our decompose.py pipeline has to break thatcomplex 4x4 matrix down into a lot of simpler pieces. 
+It goes from Two-Level matrices, to Controlled-U gates and finally down to Single-Qubit gates and CNOT.
+By the time that breakdown is finished, a single 4x4 matrix has expanded into many individual Single-Qubit gates.
+To convert those Single-Qubit gates into hardware H and T gates, our code uses a  linear search
+It basically increments a counter (k) until the base rotation angle finally lands inside the tiny error window 
+If we make the error tolerance ten times smaller, the code has to generate a string of H and T gates that is ten times longer just to hit that tiny target.
+then if we combine these two things, the gate count explodes. If our 4x4 matrix decomposes into 30 Single-Qubit gates
+and our strict error tolerance forces the brute-force search to spit out 500 H/T gates for each of them our final circuit is suddenly 15,000 gates long. 
