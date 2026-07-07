@@ -60,8 +60,6 @@ def to_bloch(g: np.ndarray) -> Bloch:
 
 
 # n1, n2 are two orthogonal Bloch-sphere axes (n1 . n2 == 0)
-# TODO: fill in the two orthogonal rotation axes (each a length-3
-# unit vector [x, y, z])
 cot_pi_8 = 1.0 / np.tan(np.pi / 8.0)
 
 n1_raw = np.array([-cot_pi_8, 1.0, cot_pi_8])
@@ -85,7 +83,6 @@ def n1n2n1_angles(b: Bloch) -> tuple[float, float, float, float]:
     where Ra(angle) is a rotation by `angle` about axis a, and {a1, a2, a3} is
     the orthonormal frame defined above. Returns (alpha, beta, gamma, global_phase).
     """
-    # TODO(student): implement using the steps above.
     theta_half = b.theta / 2.0
     
     A_val = np.cos(theta_half)
@@ -119,7 +116,6 @@ def approx_angle_with_tolerance(angle: float, tolerance: float) -> int:
       * the angular distance between two wrapped angles a, b is
         min(|a - b|, TWO_PI - |a - b|) (so 0.01 and 2*pi - 0.01 count as close).
     """
-    # TODO(student): implement using the hint above.
     k = 1
     target = angle % TWO_PI
     
@@ -160,7 +156,6 @@ def decompose_2x2(u: np.ndarray, tolerance: float) -> tuple[int, int, int]:
 
       3. Return (k, l, m).
     """
-    # TODO(student): implement using the steps above.
     b = to_bloch(u)
     alpha, beta, gamma, _global_phase = n1n2n1_angles(b)
     
@@ -169,3 +164,128 @@ def decompose_2x2(u: np.ndarray, tolerance: float) -> tuple[int, int, int]:
     m = approx_angle_with_tolerance(gamma, tolerance)
     
     return (k, l, m)
+
+
+def from_axis_angle(b: Bloch) -> np.ndarray:
+    """Build a 2x2 unitary from its Bloch form."""
+    I = np.array([[1, 0], [0, 1]], dtype=DTYPE)
+    X = np.array([[0, 1], [1, 0]], dtype=DTYPE)
+    Y = np.array([[0, -1j], [1j, 0]], dtype=DTYPE)
+    Z = np.array([[1, 0], [0, -1]], dtype=DTYPE)
+    
+    n_dot = b.n[0]*X + b.n[1]*Y + b.n[2]*Z
+    th = b.theta / 2.0
+    
+    mat = np.cos(th)*I - 1j*np.sin(th)*n_dot
+    return np.exp(1j * b.alpha) * mat
+
+
+def Rz(theta: float) -> np.ndarray:
+    return np.array([
+        [np.exp(-1j * theta / 2.0), 0],
+        [0, np.exp(1j * theta / 2.0)]
+    ], dtype=DTYPE)
+
+
+def Ry(theta: float) -> np.ndarray:
+    return np.array([
+        [np.cos(theta / 2.0), -np.sin(theta / 2.0)],
+        [np.sin(theta / 2.0),  np.cos(theta / 2.0)]
+    ], dtype=DTYPE)
+
+
+def unitary2_sqrt(u: np.ndarray) -> np.ndarray:
+    b = to_bloch(u)
+    b_sqrt = Bloch()
+    b_sqrt.alpha = b.alpha / 2.0
+    b_sqrt.theta = b.theta / 2.0
+    b_sqrt.n = b.n 
+    return from_axis_angle(b_sqrt)
+
+
+def euler_angles_zyz(u: np.ndarray) -> tuple[float, float, float, float]:
+    det_u = np.linalg.det(u)
+    alpha = 0.5 * np.angle(det_u)
+    
+    u_tilde = np.exp(-1j * alpha) * u
+    cos_gamma_half = np.clip(np.abs(u_tilde[0, 0]), 0.0, 1.0)
+    gamma = 2.0 * np.arccos(cos_gamma_half)
+    
+    if np.isclose(cos_gamma_half, 1.0):
+        gamma = 0.0
+        beta_plus_delta = 2.0 * np.angle(u_tilde[1, 1])
+        beta = beta_plus_delta / 2.0
+        delta = beta_plus_delta / 2.0
+    elif np.isclose(cos_gamma_half, 0.0):
+        gamma = np.pi
+        beta_minus_delta = 2.0 * np.angle(u_tilde[1, 0])
+        beta = beta_minus_delta / 2.0
+        delta = -beta_minus_delta / 2.0
+    else:
+        b_plus_d = 2.0 * np.angle(u_tilde[1, 1])
+        b_minus_d = 2.0 * np.angle(u_tilde[1, 0])
+        beta = (b_plus_d + b_minus_d) / 2.0
+        delta = (b_plus_d - b_minus_d) / 2.0
+        
+    return alpha, beta, gamma, delta
+
+
+T_GATE = np.array([[1, 0], [0, np.exp(1j * np.pi / 4)]], dtype=DTYPE)
+
+
+def expand_word(exponent_list: list[tuple[str, int]]) -> str:
+    s = ""
+    for g, p in exponent_list:
+        if g == 'H':
+            if p % 2 != 0:
+                s += 'H'
+        elif g == 'T':
+            s += 'T' * (p % 8)
+    return s
+
+
+def invert_gates(word: str) -> str:
+    inv = ""
+    for c in word[::-1]:
+        if c == 'H':
+            inv += 'H'
+        elif c == 'T':
+            inv += 'T' * 7
+    return inv
+
+
+def power_gates(word: str, k: int) -> str:
+    if k == 0:
+        return ""
+    if k > 0:
+        return word * k
+    return invert_gates(word) * abs(k)
+
+
+def gates_to_unitary(word: str) -> np.ndarray:
+    mat = np.eye(2, dtype=DTYPE)
+    for c in word:  
+        if c == 'H':
+            mat = mat @ H
+        elif c == 'T':
+            mat = mat @ T_GATE
+    return mat
+
+
+# FIXED: The correct Week 2 generator bases
+M1_LIST = [('H', 1), ('T', 1)]
+M2_LIST = [('T', 1), ('H', 1)]
+
+m1_str = expand_word(M1_LIST)
+m2_str = expand_word(M2_LIST)
+
+
+def approximate_in_ht(u: np.ndarray, tolerance: float) -> str:
+    k, l, m = decompose_2x2(u, tolerance)
+    
+    wk = power_gates(m1_str, k)
+    wl = power_gates(m2_str, l)
+    wm = power_gates(m1_str, m)
+    
+    
+    return wk + wl + wm
